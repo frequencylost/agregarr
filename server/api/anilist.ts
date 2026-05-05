@@ -681,3 +681,4 @@ export async function getFeedsFirstPage(perPage = 20, isAdult = false) {
     },
   };
 }
+
