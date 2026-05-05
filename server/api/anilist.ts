@@ -480,16 +480,14 @@ export async function searchAnime(
     variables.season = season;
   }
 
-  if (seasonYear) {
+  // `year` and `seasonYear` both target the GraphQL `seasonYear` field.
+  // Prefer an explicit seasonYear; fall back to year. Never emit both
+  // (would produce a duplicate `seasonYear:` argument).
+  const effectiveSeasonYear = seasonYear ?? year;
+  if (effectiveSeasonYear !== undefined) {
     queryParams.push('$seasonYear: Int');
     mediaParams.push('seasonYear: $seasonYear');
-    variables.seasonYear = seasonYear;
-  }
-
-  if (year) {
-    queryParams.push('$year: Int');
-    mediaParams.push('seasonYear: $year');
-    variables.year = year;
+    variables.seasonYear = effectiveSeasonYear;
   }
 
   if (startDateGreater) {
@@ -597,6 +595,67 @@ export async function searchAnime(
   `;
 
   return fetchAniListData<PageMediaResponse>(query, variables);
+}
+
+// ---- Relations (a single Media + its connected works) ----
+export type AniListRelationType =
+  | 'ADAPTATION'
+  | 'PREQUEL'
+  | 'SEQUEL'
+  | 'PARENT'
+  | 'SIDE_STORY'
+  | 'CHARACTER'
+  | 'SUMMARY'
+  | 'ALTERNATIVE'
+  | 'SPIN_OFF'
+  | 'OTHER'
+  | 'SOURCE'
+  | 'COMPILATION'
+  | 'CONTAINS'
+  | string;
+
+export type AniListMediaWithType = AniListMedia & {
+  type?: 'ANIME' | 'MANGA' | null;
+};
+
+export type AniListRelationEdge = {
+  relationType?: AniListRelationType | null;
+  node: AniListMediaWithType;
+};
+
+type MediaRelationsResponse = {
+  Media: AniListMediaWithType & {
+    relations?: { edges?: AniListRelationEdge[] | null } | null;
+  };
+};
+
+export async function getMediaWithRelations(id: number): Promise<{
+  source: AniListMediaWithType;
+  relations: AniListRelationEdge[];
+}> {
+  const query = `
+    ${MEDIA_FIELDS}
+    query ($id: Int!) {
+      Media(id: $id) {
+        ...MediaFields
+        type
+        relations {
+          edges {
+            relationType
+            node {
+              ...MediaFields
+              type
+            }
+          }
+        }
+      }
+    }
+  `;
+  const data = await fetchAniListData<MediaRelationsResponse>(query, { id });
+  return {
+    source: data.Media,
+    relations: data.Media?.relations?.edges ?? [],
+  };
 }
 
 // ---- Convenience ----
