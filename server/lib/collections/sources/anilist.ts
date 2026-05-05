@@ -1,5 +1,6 @@
 import {
   getFeedsFirstPage,
+  getMediaWithRelations,
   getPopularAnime,
   getTopRatedAnime,
   getTrendingAnime,
@@ -531,42 +532,35 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
         return adapt(medias.slice(0, perPage));
       }
 
-      // Legacy support: use config.anilistCustomListUrl when subtype === 'custom'
+      // Custom URL: any anilist.co URL (search, user list, or single-anime relations)
       const customUrl = config.anilistCustomListUrl;
       if (typeof customUrl === 'string' && customUrl.length > 0) {
-        // parse patterns like /user/{username}/animelist/{ListName} or /search/anime?params
         try {
           const u = new URL(customUrl);
           const parts = u.pathname.split('/').filter(Boolean);
 
-          // Handle search URLs: /search/anime?genres=Comedy&sort=TRENDING_DESC or /search/anime/top-100
+          // ---- /search/anime[/<shortcut>]?<filters> ----
           if (parts[0] === 'search' && parts[1] === 'anime') {
             const searchParams: Parameters<typeof searchAnime>[2] = {};
 
-            // Handle path-based shortcuts (e.g., /search/anime/top-100, /search/anime/this-season)
+            // Path-based shortcuts (e.g., /search/anime/top-100, /this-season)
             if (parts[2]) {
               const shortcut = parts[2].toLowerCase();
               const now = new Date();
-              const currentMonth = now.getMonth() + 1; // 1-12
+              const currentMonth = now.getMonth() + 1;
               const currentYear = now.getFullYear();
 
-              // Helper to get current season
               const getCurrentSeason = (): string => {
                 if (currentMonth >= 1 && currentMonth <= 3) return 'WINTER';
                 if (currentMonth >= 4 && currentMonth <= 6) return 'SPRING';
                 if (currentMonth >= 7 && currentMonth <= 9) return 'SUMMER';
                 return 'FALL';
               };
-
-              // Helper to get next season
               const getNextSeason = (): { season: string; year: number } => {
-                const currentSeason = getCurrentSeason();
-                if (currentSeason === 'WINTER')
-                  return { season: 'SPRING', year: currentYear };
-                if (currentSeason === 'SPRING')
-                  return { season: 'SUMMER', year: currentYear };
-                if (currentSeason === 'SUMMER')
-                  return { season: 'FALL', year: currentYear };
+                const s = getCurrentSeason();
+                if (s === 'WINTER') return { season: 'SPRING', year: currentYear };
+                if (s === 'SPRING') return { season: 'SUMMER', year: currentYear };
+                if (s === 'SUMMER') return { season: 'FALL', year: currentYear };
                 return { season: 'WINTER', year: currentYear + 1 };
               };
 
@@ -595,81 +589,99 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
               }
             }
 
-            // Parse query parameters from URL (these override path-based shortcuts)
-            const genresParam = u.searchParams.get('genres');
-            if (genresParam) {
-              searchParams.genres = genresParam.split(',');
-            }
-            const tagsParam = u.searchParams.get('tags');
-            if (tagsParam) {
-              searchParams.tags = tagsParam.split(',');
-            }
-            const seasonParam = u.searchParams.get('season');
-            if (seasonParam) {
-              searchParams.season = seasonParam.toUpperCase();
-            }
-            const seasonYearParam = u.searchParams.get('seasonYear');
-            if (seasonYearParam) {
-              searchParams.seasonYear = parseInt(seasonYearParam);
-            }
-            const yearParam = u.searchParams.get('year');
-            if (yearParam) {
-              searchParams.year = parseInt(yearParam);
-            }
-            const sortParam = u.searchParams.get('sort');
-            if (sortParam) {
-              searchParams.sort = sortParam.toUpperCase();
-            }
-            const formatParam = u.searchParams.get('format');
-            if (formatParam) {
-              searchParams.format = formatParam.toUpperCase();
-            }
-            const statusParam = u.searchParams.get('airing status');
-            if (statusParam) {
-              searchParams.status = statusParam.toUpperCase();
-            }
-            const streamingParam = u.searchParams.get('streaming on');
-            if (streamingParam) {
-              searchParams.licensedById = parseInt(streamingParam);
-            }
-            const countryParam = u.searchParams.get('country of origin');
-            if (countryParam) {
-              searchParams.countryOfOrigin = countryParam.toUpperCase();
-            }
-            const sourceParam = u.searchParams.get('source material');
-            if (sourceParam) {
-              searchParams.source = sourceParam.toUpperCase();
-            }
-            const searchParam = u.searchParams.get('search');
-            if (searchParam) {
-              searchParams.search = searchParam;
-            }
-            if (u.searchParams.get('doujin')) {
-              searchParams.isLicensed = u.searchParams.get('doujin') === 'true';
-            }
+            // Genres / tags: support both repeated keys and comma-separated values.
+            const collectMulti = (key: string): string[] => {
+              const out: string[] = [];
+              for (const raw of u.searchParams.getAll(key)) {
+                for (const v of raw.split(',')) {
+                  const trimmed = v.trim();
+                  if (trimmed) out.push(trimmed);
+                }
+              }
+              return out;
+            };
+            const genres = collectMulti('genres');
+            if (genres.length > 0) searchParams.genres = genres;
+            const tags = collectMulti('tags');
+            if (tags.length > 0) searchParams.tags = tags;
 
-            // Handle year range (appears as two separate parameters)
-            const yearRanges = u.searchParams.getAll('year range');
+            const seasonParam = u.searchParams.get('season');
+            if (seasonParam) searchParams.season = seasonParam.toUpperCase();
+
+            const seasonYearParam = u.searchParams.get('seasonYear');
+            if (seasonYearParam)
+              searchParams.seasonYear = parseInt(seasonYearParam);
+
+            const yearParam = u.searchParams.get('year');
+            if (yearParam) searchParams.year = parseInt(yearParam);
+
+            const sortParam = u.searchParams.get('sort');
+            if (sortParam) searchParams.sort = sortParam.toUpperCase();
+
+            const formatParam = u.searchParams.get('format');
+            if (formatParam) searchParams.format = formatParam.toUpperCase();
+
+            // Real AniList URL keys (no spaces).
+            const statusParam = u.searchParams.get('status');
+            if (statusParam) searchParams.status = statusParam.toUpperCase();
+
+            const licensedByIdParam =
+              u.searchParams.get('licensedById') ||
+              u.searchParams.get('licensed_by_id');
+            if (licensedByIdParam)
+              searchParams.licensedById = parseInt(licensedByIdParam);
+
+            const countryParam =
+              u.searchParams.get('country') ||
+              u.searchParams.get('countryOfOrigin');
+            if (countryParam)
+              searchParams.countryOfOrigin = countryParam.toUpperCase();
+
+            const sourceParam = u.searchParams.get('source');
+            if (sourceParam) searchParams.source = sourceParam.toUpperCase();
+
+            const searchParam = u.searchParams.get('search');
+            if (searchParam) searchParams.search = searchParam;
+
+            const isLicensedParam = u.searchParams.get('isLicensed');
+            if (isLicensedParam !== null)
+              searchParams.isLicensed = isLicensedParam === 'true';
+
+            // Year range as either repeated `yearRange=`/`year_range=` or
+            // explicit `startDate_greater=`/`startDate_lesser=` params.
+            const yearRanges = [
+              ...u.searchParams.getAll('yearRange'),
+              ...u.searchParams.getAll('year_range'),
+            ];
             if (yearRanges.length >= 2) {
-              searchParams.startDateGreater = parseInt(yearRanges[0]) * 10000; // Convert year to FuzzyDateInt (YYYYMMDD)
+              searchParams.startDateGreater = parseInt(yearRanges[0]) * 10000;
               searchParams.startDateLesser = parseInt(yearRanges[1]) * 10000;
             }
+            const sdg = u.searchParams.get('startDate_greater');
+            if (sdg) searchParams.startDateGreater = parseInt(sdg);
+            const sdl = u.searchParams.get('startDate_lesser');
+            if (sdl) searchParams.startDateLesser = parseInt(sdl);
 
-            // Handle episodes range (appears as two separate parameters)
             const episodesRanges = u.searchParams.getAll('episodes');
             if (episodesRanges.length >= 2) {
               searchParams.episodes_greater = parseInt(episodesRanges[0]);
               searchParams.episodes_lesser = parseInt(episodesRanges[1]);
             }
-
-            // Handle duration range (appears as two separate parameters)
             const durationRanges = u.searchParams.getAll('duration');
             if (durationRanges.length >= 2) {
               searchParams.duration_greater = parseInt(durationRanges[0]);
               searchParams.duration_lesser = parseInt(durationRanges[1]);
             }
 
-            // Apply format filters based on collection media type (only if not already specified)
+            // Default sort matches what AniList's web UI shows for filtered
+            // searches: Popularity descending. AniList strips `sort=` from
+            // the address bar when it equals the page default.
+            if (!searchParams.sort) {
+              searchParams.sort = 'POPULARITY_DESC';
+            }
+
+            // Apply format filters based on collection media type (only if
+            // not already specified by the URL).
             if (!searchParams.format && !searchParams.formatIn) {
               if (mediaType === 'movie') {
                 searchParams.format = 'MOVIE';
@@ -684,14 +696,65 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
               }
             }
 
-            // Fetch with pagination (same pattern as trending/popular)
             const allMedia = await paginateResults((page, perPage) =>
               searchAnime(page, perPage, searchParams)
             );
             return adapt(allMedia);
           }
 
-          // Handle user list URLs: /user/{username}/animelist/{ListName}
+          // ---- /anime/{id}[/{slug}] — relations of a single anime ----
+          if (parts[0] === 'anime' && /^\d+$/.test(parts[1] ?? '')) {
+            const animeId = parseInt(parts[1], 10);
+            const { source, relations } = await getMediaWithRelations(animeId);
+
+            const DROP_RELATION_TYPES = new Set(['ADAPTATION', 'SOURCE', 'CHARACTER']);
+            const relatedAnime = relations
+              .filter(
+                (e) =>
+                  e?.node &&
+                  (e.node.type ?? 'ANIME') === 'ANIME' &&
+                  !DROP_RELATION_TYPES.has((e.relationType || '').toUpperCase())
+              )
+              .map((e) => e.node);
+
+            // Include the source anime itself as the first item.
+            let combined: AniListMedia[] = [source, ...relatedAnime].filter(
+              (m): m is AniListMedia => !!m && m.id != null
+            );
+            // Deduplicate by id (a relation could in theory list the source).
+            const seen = new Set<number>();
+            combined = combined.filter((m) => {
+              if (seen.has(m.id)) return false;
+              seen.add(m.id);
+              return true;
+            });
+
+            // Filter to the configured library's media type.
+            combined =
+              mediaType === 'movie'
+                ? combined.filter((m) => m?.format === 'MOVIE')
+                : combined.filter(
+                    (m) =>
+                      m?.format &&
+                      tvFormats.includes(
+                        m.format as (typeof tvFormats)[number]
+                      )
+                  );
+
+            // Chronological by air date (nulls last). Stable.
+            const dateKey = (m: AniListMedia): number => {
+              const y = m.startDate?.year ?? null;
+              if (y == null) return Number.MAX_SAFE_INTEGER;
+              const mo = m.startDate?.month ?? 1;
+              const d = m.startDate?.day ?? 1;
+              return y * 10000 + mo * 100 + d;
+            };
+            combined.sort((a, b) => dateKey(a) - dateKey(b));
+
+            return adapt(combined);
+          }
+
+          // ---- /user/{username}/animelist/{ListName} ----
           if (parts[0] === 'user' && parts[1]) {
             const userName = parts[1];
             const maybeList = parts[3];
