@@ -600,10 +600,32 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
               }
               return out;
             };
-            const genres = collectMulti('genres');
-            if (genres.length > 0) searchParams.genres = genres;
-            const tags = collectMulti('tags');
-            if (tags.length > 0) searchParams.tags = tags;
+
+            // AniList's fixed genre list. Anything in a genres= param that
+            // isn't in this list is a tag (e.g. Anti-Hero, Isekai) and must
+            // be routed to tag_in instead of genre_in in the GraphQL query.
+            const ANILIST_GENRES = new Set([
+              'Action', 'Adventure', 'Comedy', 'Drama', 'Ecchi', 'Fantasy',
+              'Hentai', 'Horror', 'Mahou Shoujo', 'Mecha', 'Music', 'Mystery',
+              'Psychological', 'Romance', 'Sci-Fi', 'Slice of Life', 'Sports',
+              'Supernatural', 'Thriller',
+            ]);
+
+            const rawGenres = collectMulti('genres');
+            const realGenres: string[] = [];
+            const genresAstags: string[] = [];
+            for (const g of rawGenres) {
+              if (ANILIST_GENRES.has(g)) {
+                realGenres.push(g);
+              } else {
+                genresAstags.push(g);
+              }
+            }
+            if (realGenres.length > 0) searchParams.genres = realGenres;
+
+            const rawTags = collectMulti('tags');
+            const allTags = [...rawTags, ...genresAstags];
+            if (allTags.length > 0) searchParams.tags = allTags;
 
             const seasonParam = u.searchParams.get('season');
             if (seasonParam) searchParams.season = seasonParam.toUpperCase();
