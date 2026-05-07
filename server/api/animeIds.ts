@@ -20,6 +20,10 @@ let _loadedAt = 0;
 let _byAniList = new Map<number, AnimeIdsRow>();
 let _byAniDB = new Map<number, AnimeIdsRow>(); // For AniDB lookups
 let _byMal = new Map<number, AnimeIdsRow>(); // For MAL lookups
+let _byTvdb = new Map<number, AnimeIdsRow>(); // For Plex GUID -> AniList lookups
+let _byTmdbMovie = new Map<number, AnimeIdsRow>();
+let _byTmdbShow = new Map<number, AnimeIdsRow>();
+let _byImdb = new Map<string, AnimeIdsRow>(); // imdb id lowercased
 let _loadInFlight: Promise<void> | null = null;
 
 // Normalize array fields to always be arrays for consistent handling
@@ -111,6 +115,10 @@ export async function loadAnimeIds(
     const byAniList = new Map<number, AnimeIdsRow>();
     const byAniDB = new Map<number, AnimeIdsRow>();
     const byMal = new Map<number, AnimeIdsRow>();
+    const byTvdb = new Map<number, AnimeIdsRow>();
+    const byTmdbMovie = new Map<number, AnimeIdsRow>();
+    const byTmdbShow = new Map<number, AnimeIdsRow>();
+    const byImdb = new Map<string, AnimeIdsRow>();
 
     // Build indices - keys are now AniList IDs directly!
     for (const [anilistIdStr, row] of Object.entries(json)) {
@@ -139,11 +147,33 @@ export async function loadAnimeIds(
       for (const malId of malIds) {
         byMal.set(malId, normalized);
       }
+
+      // Reverse indexes: from Plex-side IDs back to the AniList row
+      if (row.tvdb_id != null) {
+        byTvdb.set(row.tvdb_id, normalized);
+      }
+      const tmdbMovieIds = normalizeToArray(row.tmdb_movie_id);
+      for (const id of tmdbMovieIds) {
+        byTmdbMovie.set(id, normalized);
+      }
+      if (row.tmdb_show_id != null) {
+        byTmdbShow.set(row.tmdb_show_id, normalized);
+      }
+      const imdbIds = normalizeToArray(row.imdb_id);
+      for (const id of imdbIds) {
+        if (typeof id === 'string') {
+          byImdb.set(id.toLowerCase(), normalized);
+        }
+      }
     }
 
     _byAniList = byAniList;
     _byAniDB = byAniDB;
     _byMal = byMal;
+    _byTvdb = byTvdb;
+    _byTmdbMovie = byTmdbMovie;
+    _byTmdbShow = byTmdbShow;
+    _byImdb = byImdb;
     _loadedAt = Date.now();
   } finally {
     clearTimeout(timeoutId);
@@ -173,6 +203,29 @@ export function lookupByMal(malId: number): AnimeIdsRow | undefined {
 /** Lookup PlexAniBridge row by AniDB ID */
 export function lookupByAniDB(anidbId: number): AnimeIdsRow | undefined {
   return _byAniDB.get(anidbId);
+}
+
+/** Lookup PlexAniBridge row by TVDB ID (used for reverse Plex -> AniList lookups). */
+export function lookupByTvdb(tvdbId: number): AnimeIdsRow | undefined {
+  if (!tvdbId) return undefined;
+  return _byTvdb.get(tvdbId);
+}
+
+/** Lookup PlexAniBridge row by TMDB ID. Tries movie index first, falls back to show. */
+export function lookupByTmdb(
+  tmdbId: number,
+  type?: 'movie' | 'show'
+): AnimeIdsRow | undefined {
+  if (!tmdbId) return undefined;
+  if (type === 'movie') return _byTmdbMovie.get(tmdbId);
+  if (type === 'show') return _byTmdbShow.get(tmdbId);
+  return _byTmdbMovie.get(tmdbId) ?? _byTmdbShow.get(tmdbId);
+}
+
+/** Lookup PlexAniBridge row by IMDb ID (case-insensitive). */
+export function lookupByImdb(imdbId: string): AnimeIdsRow | undefined {
+  if (!imdbId) return undefined;
+  return _byImdb.get(imdbId.toLowerCase());
 }
 
 export function animeIdsLoadedCount(): number {
