@@ -1,6 +1,15 @@
+import { getMediaScoreById as getAnilistScoreById } from '@server/api/anilist';
+import {
+  ensureAnimeIdsLoaded,
+  getFirstValue,
+  lookupByImdb,
+  lookupByTmdb,
+  lookupByTvdb,
+} from '@server/api/animeIds';
 import ImdbAPI from '@server/api/imdb';
 import ImdbRatingsAPI from '@server/api/imdbRatings';
 import type { MaintainerrCollection } from '@server/api/maintainerr';
+import { getAnimeScore as getMalScore } from '@server/api/myanimelist';
 import type { PlexLibraryItem } from '@server/api/plexapi';
 import RottenTomatoes from '@server/api/rottentomatoes';
 import type { RadarrMovie } from '@server/api/servarr/radarr';
@@ -300,6 +309,66 @@ export async function buildRenderContext(
             error: error instanceof Error ? error.message : String(error),
           });
         }
+      }
+
+      // ---- Anime ratings (AniList + MyAnimeList) ----
+      // Use the bundled PlexAniBridge mapping data to find the AniList /
+      // MAL IDs corresponding to this Plex item's TMDB/TVDB/IMDb ID.
+      // Items that aren't anime simply won't have a mapping row, in which
+      // case the score fields stay undefined and any overlay template
+      // referencing them silently skips (same behaviour as IMDb/RT).
+      try {
+        await ensureAnimeIdsLoaded();
+        const tvdbIdForAnime =
+          mediaType === 'show' && 'external_ids' in tmdbData
+            ? tmdbData.external_ids?.tvdb_id
+            : undefined;
+        const imdbIdForAnime = tmdbData.external_ids?.imdb_id;
+
+        let row =
+          (mediaType === 'show'
+            ? lookupByTvdb(Number(tvdbIdForAnime ?? 0))
+            : undefined) ??
+          lookupByTmdb(tmdbId, mediaType === 'show' ? 'show' : 'movie') ??
+          (imdbIdForAnime ? lookupByImdb(imdbIdForAnime) : undefined);
+
+        if (row) {
+          const anilistId = row.anilist_id;
+          const malId = getFirstValue(row.mal_id);
+
+          // Run both lookups in parallel; failures are already swallowed
+          // inside the score helpers and return null.
+          const [anilistRaw, malRaw] = await Promise.all([
+            anilistId ? getAnilistScoreById(anilistId) : Promise.resolve(null),
+            typeof malId === 'number'
+              ? getMalScore(malId)
+              : Promise.resolve(null),
+          ]);
+
+          // Normalize both to /10 rounded to 1 dp.
+          // AniList averageScore is 0-100; MAL mean is already 0-10.
+          if (typeof anilistRaw === 'number') {
+            context.anilistScore = Math.round(anilistRaw / 10 * 10) / 10;
+          }
+          if (typeof malRaw === 'number') {
+            context.malScore = Math.round(malRaw * 10) / 10;
+          }
+
+          logger.debug('Fetched anime ratings', {
+            label: 'OverlayContextBuilder',
+            title: context.title,
+            anilistId,
+            malId,
+            anilistScore: context.anilistScore,
+            malScore: context.malScore,
+          });
+        }
+      } catch (error) {
+        logger.debug('Failed to fetch anime ratings', {
+          label: 'OverlayContextBuilder',
+          title: context.title,
+          error: error instanceof Error ? error.message : String(error),
+        });
       }
 
       // Movie-specific metadata
