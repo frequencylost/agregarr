@@ -658,6 +658,41 @@ export async function getMediaWithRelations(id: number): Promise<{
   };
 }
 
+// ---- Single-media score lookup (cached) ----
+// AniList rate-limits to ~90 req/min. We cache scores by id for 12 hours to
+// avoid hammering the API when generating overlays for a whole library.
+const _scoreCache = new Map<number, { score: number | null; at: number }>();
+const SCORE_TTL_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * Fetch the AniList averageScore (0-100) for a single media id. Returns null
+ * if AniList has no score yet (e.g. unaired anime).
+ */
+export async function getMediaScoreById(id: number): Promise<number | null> {
+  if (!id) return null;
+  const cached = _scoreCache.get(id);
+  if (cached && Date.now() - cached.at < SCORE_TTL_MS) {
+    return cached.score;
+  }
+  const query = `
+    query ($id: Int!) {
+      Media(id: $id) {
+        averageScore
+      }
+    }
+  `;
+  try {
+    const data = await fetchAniListData<{
+      Media: { averageScore?: number | null } | null;
+    }>(query, { id });
+    const score = data.Media?.averageScore ?? null;
+    _scoreCache.set(id, { score, at: Date.now() });
+    return score;
+  } catch {
+    return null;
+  }
+}
+
 // ---- Convenience ----
 export async function getFeedsFirstPage(perPage = 20, isAdult = false) {
   // Make requests sequential instead of concurrent to avoid rate limiting
@@ -681,4 +716,3 @@ export async function getFeedsFirstPage(perPage = 20, isAdult = false) {
     },
   };
 }
-
