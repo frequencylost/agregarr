@@ -345,6 +345,8 @@ export const AVAILABLE_VARIABLES = {
     { field: 'rtCertifiedFresh', label: 'RT Certified Fresh', example: 'true' },
     { field: 'rtVerifiedHot', label: 'RT Verified Hot', example: 'true' },
     { field: 'plexUserRating', label: 'Plex User Rating', example: '8' },
+    { field: 'anilistScore', label: 'AniList Score', example: '8.3' },
+    { field: 'malScore', label: 'MyAnimeList Score', example: '8.5' },
     // { field: 'metacriticScore', label: 'Metacritic Score', example: '73' }, // TODO: Implement Metacritic integration
   ],
   metadata: [
@@ -618,6 +620,8 @@ export const CONDITION_FIELD_CATEGORIES = {
     { field: 'rtCertifiedFresh', label: 'RT Certified Fresh', example: 'true' },
     { field: 'rtVerifiedHot', label: 'RT Verified Hot', example: 'true' },
     { field: 'plexUserRating', label: 'Plex User Rating', example: '8' },
+    { field: 'anilistScore', label: 'AniList Score', example: '8.3' },
+    { field: 'malScore', label: 'MyAnimeList Score', example: '8.5' },
     // { field: 'metacriticScore', label: 'Metacritic Score', example: '73' }, // TODO: Implement Metacritic integration
   ],
   Collections: [
