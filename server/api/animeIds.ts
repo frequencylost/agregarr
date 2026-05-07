@@ -148,21 +148,48 @@ export async function loadAnimeIds(
         byMal.set(malId, normalized);
       }
 
-      // Reverse indexes: from Plex-side IDs back to the AniList row
+      // Reverse indexes: from Plex-side IDs back to the AniList row.
+      //
+      // A single TV show in Plex (one TVDB/TMDB ID) often maps to multiple
+      // AniList entries because AniList treats each season as its own
+      // entry. We deliberately keep the entry with the LOWEST AniList ID,
+      // which is almost always Season 1 — the canonical "the show" entry
+      // most viewers would look up on AniList/MAL. This makes the score
+      // displayed on a Plex show poster deterministic and intuitive
+      // (e.g. AoT shows S1's score, not the latest cour's).
+      const preferLowest = (
+        map: Map<number | string, AnimeIdsRow>,
+        key: number | string
+      ) => {
+        const existing = map.get(key);
+        if (
+          !existing ||
+          (anilistId < (existing.anilist_id ?? Number.MAX_SAFE_INTEGER))
+        ) {
+          map.set(key, normalized);
+        }
+      };
+
       if (row.tvdb_id != null) {
-        byTvdb.set(row.tvdb_id, normalized);
+        preferLowest(byTvdb as Map<number | string, AnimeIdsRow>, row.tvdb_id);
       }
       const tmdbMovieIds = normalizeToArray(row.tmdb_movie_id);
       for (const id of tmdbMovieIds) {
-        byTmdbMovie.set(id, normalized);
+        preferLowest(byTmdbMovie as Map<number | string, AnimeIdsRow>, id);
       }
       if (row.tmdb_show_id != null) {
-        byTmdbShow.set(row.tmdb_show_id, normalized);
+        preferLowest(
+          byTmdbShow as Map<number | string, AnimeIdsRow>,
+          row.tmdb_show_id
+        );
       }
       const imdbIds = normalizeToArray(row.imdb_id);
       for (const id of imdbIds) {
         if (typeof id === 'string') {
-          byImdb.set(id.toLowerCase(), normalized);
+          preferLowest(
+            byImdb as Map<number | string, AnimeIdsRow>,
+            id.toLowerCase()
+          );
         }
       }
     }
