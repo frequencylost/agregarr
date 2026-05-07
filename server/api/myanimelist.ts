@@ -173,6 +173,35 @@ export async function getRankedAnime(
   });
 }
 
+// ---- Single-anime score lookup (cached) ----
+// MAL is rate-sensitive; cache scores by id for 12 hours.
+const _malScoreCache = new Map<number, { score: number | null; at: number }>();
+const MAL_SCORE_TTL_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * Fetch the MyAnimeList mean score (0-10) for a single anime id. Returns null
+ * if MAL has no score (e.g. unaired) or the request fails. Reuses the
+ * MAL Client ID configured under MyAnimeList Settings.
+ */
+export async function getAnimeScore(animeId: number): Promise<number | null> {
+  if (!animeId) return null;
+  const cached = _malScoreCache.get(animeId);
+  if (cached && Date.now() - cached.at < MAL_SCORE_TTL_MS) {
+    return cached.score;
+  }
+  try {
+    const data = await fetchMALData<{ id: number; mean?: number | null }>(
+      `anime/${animeId}`,
+      { fields: 'mean' }
+    );
+    const score = typeof data.mean === 'number' ? data.mean : null;
+    _malScoreCache.set(animeId, { score, at: Date.now() });
+    return score;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Get human-readable label for ranking type
  */
