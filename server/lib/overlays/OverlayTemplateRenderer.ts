@@ -346,6 +346,8 @@ export interface OverlayRenderContext {
   rtCertifiedFresh?: boolean; // True if Rotten Tomatoes Certified Fresh
   rtVerifiedHot?: boolean; // True if Rotten Tomatoes Verified Hot (audience badge)
   plexUserRating?: number; // Plex user rating (0-10 scale where 10 = 5 stars)
+  anilistScore?: number; // AniList community score, normalised to /10 (1 dp)
+  malScore?: number; // MyAnimeList mean score (0-10, 1 dp)
   // metacriticScore?: number; // TODO: Implement Metacritic integration
 
   // TMDB Metadata
@@ -1031,8 +1033,12 @@ class OverlayTemplateRendererService {
           );
         } else if (typeof variableValue === 'number') {
           // Format ratings/scores appropriately
-          if (segment.field === 'imdbRating') {
-            // IMDb ratings should show decimal (e.g., 8.7)
+          if (
+            segment.field === 'imdbRating' ||
+            segment.field === 'anilistScore' ||
+            segment.field === 'malScore'
+          ) {
+            // /10 ratings show one decimal place (e.g., 8.7)
             formattedValue = variableValue.toFixed(1);
           } else if (
             segment.field.includes('Score') ||
