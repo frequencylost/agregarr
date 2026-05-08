@@ -625,7 +625,19 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
 
             const rawTags = collectMulti('tags');
             const allTags = [...rawTags, ...genresAstags];
-            if (allTags.length > 0) searchParams.tags = allTags;
+            if (allTags.length > 0) {
+              searchParams.tags = allTags;
+              // When tags are involved, default to a 60% relevance floor so
+              // shows where the tag is only weakly applicable get excluded.
+              // Override via ?minimumTagRank=80 (stricter) or
+              // ?minimumTagRank=0 (disable).
+              const rankParam = u.searchParams.get('minimumTagRank');
+              const rankValue =
+                rankParam !== null ? parseInt(rankParam, 10) : 60;
+              if (Number.isFinite(rankValue)) {
+                searchParams.minimumTagRank = rankValue;
+              }
+            }
 
             const seasonParam = u.searchParams.get('season');
             if (seasonParam) searchParams.season = seasonParam.toUpperCase();
