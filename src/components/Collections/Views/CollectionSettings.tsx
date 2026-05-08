@@ -619,7 +619,7 @@ const CollectionSettings = ({
         libraryRecommended: true,
       }, // Default to Users and Server Owner Home
       isActive: true, // Placeholder for TypeScript - backend will compute actual value
-      maxItems: 30,
+      maxItems: 1000,
       libraryId: '', // Start with no selection to show "Select Libraries..."
       libraryName: '',
       sortOrderHome: 1, // Default positioned item (0 is void)
