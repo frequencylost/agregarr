@@ -424,6 +424,7 @@ export async function searchAnime(
     episodes_lesser?: number;
     duration_greater?: number;
     duration_lesser?: number;
+    minimumTagRank?: number; // 0-100; only matches media whose tag relevance >= this
   } = {}
 ) {
   // Map URL parameter names to AniList GraphQL parameter names
@@ -449,6 +450,7 @@ export async function searchAnime(
     episodes_lesser,
     duration_greater,
     duration_lesser,
+    minimumTagRank,
   } = searchParams;
 
   // Build query dynamically based on provided filters
@@ -570,6 +572,14 @@ export async function searchAnime(
     queryParams.push('$durationLesser: Int');
     mediaParams.push('duration_lesser: $durationLesser');
     variables.durationLesser = duration_lesser;
+  }
+
+  // Tag-rank threshold: only meaningful when tag_in is also set, but
+  // sending it without is harmless (AniList ignores it).
+  if (minimumTagRank !== undefined) {
+    queryParams.push('$minimumTagRank: Int');
+    mediaParams.push('minimumTagRank: $minimumTagRank');
+    variables.minimumTagRank = minimumTagRank;
   }
 
   if (sort) {
