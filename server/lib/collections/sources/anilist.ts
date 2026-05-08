@@ -633,7 +633,7 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
               // ?minimumTagRank=0 (disable).
               const rankParam = u.searchParams.get('minimumTagRank');
               const rankValue =
-                rankParam !== null ? parseInt(rankParam, 10) : 60;
+                rankParam !== null ? parseInt(rankParam, 10) : 70;
               if (Number.isFinite(rankValue)) {
                 searchParams.minimumTagRank = rankValue;
               }
