@@ -162,8 +162,9 @@ export function validateExternalUrl(
         // - https://anilist.co/list/:listname
         // - https://anilist.co/search/anime?... (with optional additional path segments like /this-season, /popular)
         // - single item pages: /anime/:id or /anime/:id/:slug
+        // - staff pages: /staff/:id or /staff/:id/:name (creator/author/etc.)
         const anilistPattern =
-          /^(?:\/user\/[^/]+\/(?:animelist|list)\/[^/?]+|\/(?:animelist|list)\/[^/?]+|\/search\/anime(?:\/[^/?]+)?|\/anime\/\d+(?:\/[^/?]*)?)\/?$/;
+          /^(?:\/user\/[^/]+\/(?:animelist|list)\/[^/?]+|\/(?:animelist|list)\/[^/?]+|\/search\/anime(?:\/[^/?]+)?|\/anime\/\d+(?:\/[^/?]*)?|\/staff\/\d+(?:\/[^/?]*)?)\/?$/;
 
         // Allow the pattern to match either the pathname or a search path with query params
         if (!urlObj.pathname.match(anilistPattern)) {
