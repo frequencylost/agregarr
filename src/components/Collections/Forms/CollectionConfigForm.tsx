@@ -156,7 +156,7 @@ const messages = defineMessages({
   validationLetterboxdWatchlistUrlInvalid:
     'Please enter a valid Letterboxd watchlist URL (e.g., https://letterboxd.com/username/watchlist/)',
   validationAnilistUrlInvalid:
-    'Please enter a valid AniList URL (e.g., user lists, search pages, or anime pages)',
+    'Please enter a valid AniList URL (e.g., user lists, search pages, anime pages, or staff pages)',
   validationSourceIdRequired: 'Source ID is required',
   validationSourceTypeRequired: 'Source type is required',
   validationSourcePriorityRequired: 'Source priority is required',
@@ -790,7 +790,7 @@ const CollectionFormConfigForm = ({
         schema
           .required(intl.formatMessage(messages.validationAnilistUrlRequired))
           .matches(
-            /anilist\.co\/(?:user\/[^/]+\/(?:animelist|list)\/[^/?]+|(?:animelist|list)\/[^/?]+|search\/anime(?:\/[^/?]+)?|anime\/?\d+)/,
+            /anilist\.co\/(?:user\/[^/]+\/(?:animelist|list)\/[^/?]+|(?:animelist|list)\/[^/?]+|search\/anime(?:\/[^/?]+)?|anime\/?\d+|staff\/\d+)/,
             intl.formatMessage(messages.validationAnilistUrlInvalid)
           ),
       otherwise: (schema) => schema,
