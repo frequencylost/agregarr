@@ -2,6 +2,7 @@ import {
   getFeedsFirstPage,
   getMediaWithRelations,
   getPopularAnime,
+  getStaffMediaPage,
   getTopRatedAnime,
   getTrendingAnime,
   getUserCustomLists,
@@ -633,7 +634,7 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
               // ?minimumTagRank=0 (disable).
               const rankParam = u.searchParams.get('minimumTagRank');
               const rankValue =
-                rankParam !== null ? parseInt(rankParam, 10) : 70;
+                rankParam !== null ? parseInt(rankParam, 10) : 60;
               if (Number.isFinite(rankValue)) {
                 searchParams.minimumTagRank = rankValue;
               }
@@ -786,6 +787,81 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
             combined.sort((a, b) => dateKey(a) - dateKey(b));
 
             return adapt(combined);
+          }
+
+          // ---- /staff/{id}[/{name}] — works by a single staff member,
+          //      filtered by their role. Default role is "Original Creator"
+          //      so that for groups like CLAMP or Type-Moon you only get
+          //      their actual works (where their manga/novel/game is the
+          //      original source) and not anime where they only contributed
+          //      character designs or other secondary roles.
+          //
+          //      Override roles via ?roles=Original Creator,Original Story
+          //      (comma-separated, case-insensitive). Override sort via
+          //      ?sort= (default POPULARITY_DESC).
+          if (parts[0] === 'staff' && /^\d+$/.test(parts[1] ?? '')) {
+            const staffId = parseInt(parts[1], 10);
+
+            const rolesRaw = u.searchParams.get('roles');
+            const allowedRoles = (
+              rolesRaw ? rolesRaw.split(',') : ['Original Creator']
+            )
+              .map((r) => r.trim().toLowerCase())
+              .filter(Boolean);
+
+            const sortParam = u.searchParams.get('sort');
+            const sort = sortParam
+              ? sortParam.toUpperCase()
+              : 'POPULARITY_DESC';
+
+            const allMedia: AniListMedia[] = [];
+            let staffPage = 1;
+            const maxStaffPages = 50; // safety cap
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+              if (staffPage > maxStaffPages) break;
+              const data = await getStaffMediaPage(
+                staffId,
+                staffPage,
+                50,
+                sort
+              );
+              const edges = data?.Staff?.staffMedia?.edges ?? [];
+              if (edges.length === 0) break;
+              for (const edge of edges) {
+                const role = (edge.staffRole || '').toLowerCase();
+                if (!allowedRoles.includes(role)) continue;
+                if (!edge.node || edge.node.id == null) continue;
+                allMedia.push(edge.node);
+              }
+              const hasNext = data?.Staff?.staffMedia?.pageInfo?.hasNextPage;
+              if (!hasNext) break;
+              staffPage++;
+            }
+
+            // Apply collection-library media-type format filter.
+            let filtered: AniListMedia[] =
+              mediaType === 'movie'
+                ? allMedia.filter((m) => m?.format === 'MOVIE')
+                : allMedia.filter(
+                    (m) =>
+                      m?.format &&
+                      tvFormats.includes(
+                        m.format as (typeof tvFormats)[number]
+                      )
+                  );
+
+            // Deduplicate (a creator can be credited multiple times on the
+            // same media via different roles even after role filtering — be
+            // defensive).
+            const seen = new Set<number>();
+            filtered = filtered.filter((m) => {
+              if (seen.has(m.id)) return false;
+              seen.add(m.id);
+              return true;
+            });
+
+            return adapt(filtered);
           }
 
           // ---- /user/{username}/animelist/{ListName} ----
