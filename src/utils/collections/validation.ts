@@ -149,8 +149,8 @@ const customUrlValidations = {
       schema
         .required('AniList list URL is required')
         .matches(
-          /anilist\.co\/(?:user\/[^/]+\/(?:animelist|list)\/[^/?]+|(?:animelist|list)\/[^/?]+|search\/anime(?:\/[^/?]+)?|anime\/?\d+)/,
-          'Please enter a valid AniList URL (e.g., user lists, search pages, or anime pages)'
+          /anilist\.co\/(?:user\/[^/]+\/(?:animelist|list)\/[^/?]+|(?:animelist|list)\/[^/?]+|search\/anime(?:\/[^/?]+)?|anime\/?\d+|staff\/\d+)/,
+          'Please enter a valid AniList URL (e.g., user lists, search pages, anime pages, or staff pages)'
         ),
     otherwise: (schema) => schema,
   }),
