@@ -668,6 +668,58 @@ export async function getMediaWithRelations(id: number): Promise<{
   };
 }
 
+// ---- Works by a single staff member (creator/author/composer/etc.) ----
+export type AniListStaffEdge = {
+  staffRole?: string | null;
+  node: AniListMedia;
+};
+
+type StaffMediaResponse = {
+  Staff: {
+    id: number;
+    staffMedia: {
+      pageInfo: AniListPageInfo;
+      edges: AniListStaffEdge[];
+    };
+  } | null;
+};
+
+/**
+ * One page of media credited to an AniList staff entry, with the
+ * `staffRole` for each edge (e.g. "Original Creator", "Director",
+ * "Original Character Design"). Caller filters by role.
+ */
+export async function getStaffMediaPage(
+  staffId: number,
+  page = 1,
+  perPage = 50,
+  sort: string = 'POPULARITY_DESC'
+): Promise<StaffMediaResponse> {
+  const query = `
+    ${MEDIA_FIELDS}
+    query ($id: Int!, $page: Int!, $perPage: Int!, $sort: [MediaSort]) {
+      Staff(id: $id) {
+        id
+        staffMedia(page: $page, perPage: $perPage, sort: $sort, type: ANIME) {
+          pageInfo { total perPage currentPage lastPage hasNextPage }
+          edges {
+            staffRole
+            node {
+              ...MediaFields
+            }
+          }
+        }
+      }
+    }
+  `;
+  return fetchAniListData<StaffMediaResponse>(query, {
+    id: staffId,
+    page,
+    perPage,
+    sort,
+  });
+}
+
 // ---- Single-media score lookup (cached) ----
 // AniList rate-limits to ~90 req/min. We cache scores by id for 12 hours to
 // avoid hammering the API when generating overlays for a whole library.
