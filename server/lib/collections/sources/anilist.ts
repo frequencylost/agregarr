@@ -731,10 +731,77 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
               }
             }
 
+            // `sourceCountry` filters anime by the country of origin of
+            // their source material (manhwa/manga), not their production
+            // country. AniList's native `countryOfOrigin` reflects where
+            // an anime was animated, which is almost always Japan even
+            // when the original manhwa is Korean (e.g. Tower of God,
+            // God of High School, Noblesse). To match by source country
+            // we have to fetch each result's relations and look for a
+            // MANGA-type related node whose own countryOfOrigin matches.
+            const sourceCountryParam = u.searchParams.get('sourceCountry');
+            const sourceCountries = sourceCountryParam
+              ? sourceCountryParam
+                  .split(',')
+                  .map((c) => c.trim().toUpperCase())
+                  .filter(Boolean)
+              : [];
+            const extraMediaFields =
+              sourceCountries.length > 0
+                ? `
+                    relations {
+                      edges {
+                        node {
+                          type
+                          countryOfOrigin
+                        }
+                      }
+                    }
+                  `
+                : '';
+
             const allMedia = await paginateResults((page, perPage) =>
-              searchAnime(page, perPage, searchParams)
+              searchAnime(page, perPage, searchParams, extraMediaFields)
             );
-            return adapt(allMedia);
+
+            if (sourceCountries.length === 0) {
+              return adapt(allMedia);
+            }
+
+            // Post-filter: keep media whose related works include a
+            // MANGA-type entry with a matching countryOfOrigin.
+            type MaybeWithRelations = AniListMedia & {
+              relations?: {
+                edges?: {
+                  node?: {
+                    type?: string | null;
+                    countryOfOrigin?: string | null;
+                  } | null;
+                }[];
+              } | null;
+            };
+
+            const filtered = (allMedia as MaybeWithRelations[]).filter((m) => {
+              const edges = m?.relations?.edges ?? [];
+              return edges.some((e) => {
+                const node = e?.node;
+                if (!node) return false;
+                if (node.type !== 'MANGA') return false;
+                const coo = (node.countryOfOrigin || '').toUpperCase();
+                return coo !== '' && sourceCountries.includes(coo);
+              });
+            });
+
+            logger.info(
+              `AniList sourceCountry filter (${sourceCountries.join(',')}): ${
+                filtered.length
+              } of ${allMedia.length} results kept`,
+              {
+                label: 'AniList Collections',
+                configName: config.name,
+              }
+            );
+            return adapt(filtered);
           }
 
           // ---- /anime/{id}[/{slug}] — relations of a single anime ----
