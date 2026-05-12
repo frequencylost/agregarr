@@ -425,7 +425,13 @@ export async function searchAnime(
     duration_greater?: number;
     duration_lesser?: number;
     minimumTagRank?: number; // 0-100; only matches media whose tag relevance >= this
-  } = {}
+  } = {},
+  /**
+   * Optional extra GraphQL selection appended inside each `media { ... }`.
+   * Used by the URL parser to fetch relations data for the `sourceCountry`
+   * filter without bloating queries that don't need it.
+   */
+  extraMediaFields = ''
 ) {
   // Map URL parameter names to AniList GraphQL parameter names
   const {
@@ -599,6 +605,7 @@ export async function searchAnime(
         pageInfo { total perPage currentPage lastPage hasNextPage }
         media(${mediaParams.join(', ')}) {
           ...MediaFields
+          ${extraMediaFields}
         }
       }
     }
