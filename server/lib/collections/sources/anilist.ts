@@ -928,6 +928,28 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
               return true;
             });
 
+            // For date-based sorts, apply a deterministic chronological
+            // post-sort (nulls last). AniList's native START_DATE sort
+            // places entries with missing/partial air dates inconsistently;
+            // this guarantees a clean watch order.
+            if (sort === 'START_DATE' || sort === 'START_DATE_DESC') {
+              const dateKey = (m: AniListMedia): number => {
+                const y = m.startDate?.year ?? null;
+                if (y == null) return Number.MAX_SAFE_INTEGER;
+                const mo = m.startDate?.month ?? 1;
+                const d = m.startDate?.day ?? 1;
+                return y * 10000 + mo * 100 + d;
+              };
+              filtered.sort((a, b) => {
+                const ka = dateKey(a);
+                const kb = dateKey(b);
+                // Keep nulls last for both ascending and descending.
+                if (ka === Number.MAX_SAFE_INTEGER) return 1;
+                if (kb === Number.MAX_SAFE_INTEGER) return -1;
+                return sort === 'START_DATE_DESC' ? kb - ka : ka - kb;
+              });
+            }
+
             return adapt(filtered);
           }
 
