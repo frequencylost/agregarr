@@ -3,6 +3,7 @@ import {
   getMediaWithRelations,
   getPopularAnime,
   getStaffMediaPage,
+  getStudioMediaPage,
   getTopRatedAnime,
   getTrendingAnime,
   getUserCustomLists,
@@ -951,6 +952,97 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
             }
 
             return adapt(filtered);
+          }
+
+          // ---- /studio/{id}[/{name}] — works by an animation studio.
+          //      Defaults to the studio's *main* works only (AniList's
+          //      isMain filter) so e.g. Studio Ghibli returns its own
+          //      films, not titles it merely assisted on. Override with
+          //      ?includeSecondary=true. Sort via ?sort= (default
+          //      POPULARITY_DESC); &sort=START_DATE gives a deterministic
+          //      chronological order with undated entries last.
+          if (parts[0] === 'studio' && /^\d+$/.test(parts[1] ?? '')) {
+            const studioId = parseInt(parts[1], 10);
+
+            const includeSecondary =
+              (u.searchParams.get('includeSecondary') || '').toLowerCase() ===
+              'true';
+            const onlyMain = !includeSecondary;
+
+            const studioSortParam = u.searchParams.get('sort');
+            const studioSort = studioSortParam
+              ? studioSortParam.toUpperCase()
+              : 'POPULARITY_DESC';
+
+            const studioMedia: AniListMedia[] = [];
+            let studioPage = 1;
+            const maxStudioPages = 50; // safety cap
+            // eslint-disable-next-line no-constant-condition
+            while (true) {
+              if (studioPage > maxStudioPages) break;
+              const data = await getStudioMediaPage(
+                studioId,
+                studioPage,
+                50,
+                studioSort,
+                onlyMain
+              );
+              const edges = data?.Studio?.media?.edges ?? [];
+              if (edges.length === 0) break;
+              for (const edge of edges) {
+                if (!edge?.node || edge.node.id == null) continue;
+                studioMedia.push(edge.node);
+              }
+              const hasNext = data?.Studio?.media?.pageInfo?.hasNextPage;
+              if (!hasNext) break;
+              studioPage++;
+            }
+
+            // Apply collection-library media-type format filter.
+            let studioFiltered: AniListMedia[] =
+              mediaType === 'movie'
+                ? studioMedia.filter((m) => m?.format === 'MOVIE')
+                : studioMedia.filter(
+                    (m) =>
+                      m?.format &&
+                      tvFormats.includes(
+                        m.format as (typeof tvFormats)[number]
+                      )
+                  );
+
+            // Deduplicate.
+            const studioSeen = new Set<number>();
+            studioFiltered = studioFiltered.filter((m) => {
+              if (studioSeen.has(m.id)) return false;
+              studioSeen.add(m.id);
+              return true;
+            });
+
+            // Deterministic chronological post-sort for date sorts
+            // (nulls last), mirroring the staff/relations branches.
+            if (
+              studioSort === 'START_DATE' ||
+              studioSort === 'START_DATE_DESC'
+            ) {
+              const dateKey = (m: AniListMedia): number => {
+                const y = m.startDate?.year ?? null;
+                if (y == null) return Number.MAX_SAFE_INTEGER;
+                const mo = m.startDate?.month ?? 1;
+                const d = m.startDate?.day ?? 1;
+                return y * 10000 + mo * 100 + d;
+              };
+              studioFiltered.sort((a, b) => {
+                const ka = dateKey(a);
+                const kb = dateKey(b);
+                if (ka === Number.MAX_SAFE_INTEGER) return 1;
+                if (kb === Number.MAX_SAFE_INTEGER) return -1;
+                return studioSort === 'START_DATE_DESC'
+                  ? kb - ka
+                  : ka - kb;
+              });
+            }
+
+            return adapt(studioFiltered);
           }
 
           // ---- /user/{username}/animelist/{ListName} ----
