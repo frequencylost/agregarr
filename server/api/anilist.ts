@@ -727,6 +727,67 @@ export async function getStaffMediaPage(
   });
 }
 
+// ---- Works by a single animation studio ----
+export type AniListStudioEdge = {
+  isMainStudio?: boolean | null;
+  node: AniListMedia;
+};
+
+type StudioMediaResponse = {
+  Studio: {
+    id: number;
+    name: string;
+    media: {
+      pageInfo: AniListPageInfo;
+      edges: AniListStudioEdge[];
+    };
+  } | null;
+};
+
+/**
+ * One page of media produced by an AniList studio.
+ *
+ * `onlyMain` maps to AniList's `isMain` connection argument: when true
+ * (the default) only anime where this studio was the *primary* studio
+ * are returned — not titles where it merely assisted. This is the studio
+ * analogue of the "Original Creator" role filter used for staff.
+ */
+export async function getStudioMediaPage(
+  studioId: number,
+  page = 1,
+  perPage = 50,
+  sort: string = 'POPULARITY_DESC',
+  onlyMain = true
+): Promise<StudioMediaResponse> {
+  const mediaArgs = onlyMain
+    ? 'page: $page, perPage: $perPage, sort: $sort, isMain: true'
+    : 'page: $page, perPage: $perPage, sort: $sort';
+  const query = `
+    ${MEDIA_FIELDS}
+    query ($id: Int!, $page: Int!, $perPage: Int!, $sort: [MediaSort]) {
+      Studio(id: $id) {
+        id
+        name
+        media(${mediaArgs}) {
+          pageInfo { total perPage currentPage lastPage hasNextPage }
+          edges {
+            isMainStudio
+            node {
+              ...MediaFields
+            }
+          }
+        }
+      }
+    }
+  `;
+  return fetchAniListData<StudioMediaResponse>(query, {
+    id: studioId,
+    page,
+    perPage,
+    sort,
+  });
+}
+
 // ---- Single-media score lookup (cached) ----
 // AniList rate-limits to ~90 req/min. We cache scores by id for 12 hours to
 // avoid hammering the API when generating overlays for a whole library.
