@@ -23,7 +23,7 @@ const messages = defineMessages({
   letterboxdWatchlistUrl: 'Letterboxd Watchlist URL',
   letterboxdWatchlistHelp: 'Enter the full URL to your Letterboxd watchlist.',
   anilistUrlExample:
-    'Examples: search (https://anilist.co/search/anime?year=2026&season=SPRING&sort=POPULARITY_DESC), genres (https://anilist.co/search/anime?genres=Action), source country e.g. Korean manhwa adaptations (https://anilist.co/search/anime?sourceCountry=KR — filters by source material country, not production country), single anime relations (https://anilist.co/anime/4654/A-Certain-Magical-Index/), staff/creator (https://anilist.co/staff/96877/CLAMP — defaults to "Original Creator" role only; override with ?roles=Original%20Creator,Original%20Story), or user list (https://anilist.co/user/username/animelist/listname). Order is preserved from the URL\'s sort; relations are sorted chronologically.',
+    'Examples: search (https://anilist.co/search/anime?year=2026&season=SPRING&sort=POPULARITY_DESC), genres (https://anilist.co/search/anime?genres=Action), source country e.g. Korean manhwa adaptations (https://anilist.co/search/anime?sourceCountry=KR — filters by source material country, not production country), single anime relations (https://anilist.co/anime/4654/A-Certain-Magical-Index/), staff/creator (https://anilist.co/staff/96877/CLAMP — defaults to "Original Creator" role only; override with ?roles=Original%20Creator,Original%20Story; add &sort=START_DATE for chronological order), or user list (https://anilist.co/user/username/animelist/listname). Order is preserved from the URL\'s sort; relations are sorted chronologically.',
   mdblistUrlExample: 'Example: https://mdblist.com/lists/username/list-name',
 });
 
