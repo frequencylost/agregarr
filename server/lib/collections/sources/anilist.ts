@@ -10,12 +10,14 @@ import {
   searchAnime,
   type AniListCustomList,
   type AniListMedia,
+  type AniListRelationEdge,
 } from '@server/api/anilist';
 import {
   ensureAnimeIdsLoaded,
   getFirstValue,
   lookupByAniList,
   lookupByMal,
+  type AnimeIdsRow,
 } from '@server/api/animeIds';
 import type PlexAPI from '@server/api/plexapi';
 import { BaseCollectionSync } from '@server/lib/collections/core/BaseCollectionSync';
@@ -1092,6 +1094,95 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
     return adapt(allMedia);
   }
 
+  /**
+   * True if a PlexAniBridge row carries at least one ID that can be matched
+   * against the Plex library (TVDB / TMDB show / TMDB movie / IMDb).
+   * anidb_id and mal_id alone are NOT matchable against a Plex library.
+   */
+  private hasExternalIds(row?: AnimeIdsRow): boolean {
+    if (!row) return false;
+    return (
+      row.tvdb_id != null ||
+      row.tmdb_show_id != null ||
+      getFirstValue(row.tmdb_movie_id) != null ||
+      getFirstValue(row.imdb_id) != null
+    );
+  }
+
+  /**
+   * Resolve a matchable PlexAniBridge row for a sequel/season entry that
+   * lacks external IDs of its own.
+   *
+   * Newly-airing sequel seasons frequently have a PlexAniBridge row with
+   * only anidb_id/mal_id (no TVDB/TMDB/IMDb) — the maintainer, TVDB, or
+   * TMDB hasn't split the new season yet. In Plex, though, every season of
+   * a show lives under ONE entry keyed by the season-1 TVDB/TMDB ID. So we
+   * walk the PREQUEL/PARENT relation chain upward until we reach an
+   * ancestor season whose row DOES have external IDs, and borrow those for
+   * matching. Returns undefined if no matchable ancestor is found.
+   */
+  private async resolveAncestorMappingWithIds(
+    anilistId: number,
+    relationsCache: Map<number, AniListRelationEdge[]>,
+    depth = 0,
+    visited: Set<number> = new Set()
+  ): Promise<AnimeIdsRow | undefined> {
+    // Bound the walk: guards against cycles and pathological chains.
+    if (depth > 5 || visited.has(anilistId)) return undefined;
+    visited.add(anilistId);
+
+    let edges = relationsCache.get(anilistId);
+    if (!edges) {
+      try {
+        const { relations } = await getMediaWithRelations(anilistId);
+        edges = relations ?? [];
+        relationsCache.set(anilistId, edges);
+      } catch (e) {
+        logger.debug('Failed to fetch relations for sequel resolution', {
+          label: 'AniList Collections',
+          anilistId,
+          error: e instanceof Error ? e.message : String(e),
+        });
+        return undefined;
+      }
+    }
+
+    // PREQUEL and PARENT edges both point "up" the franchise toward the
+    // original season. Prefer PREQUEL (direct predecessor) over PARENT.
+    const ancestorEdges = edges
+      .filter(
+        (e) =>
+          e?.node &&
+          (e.node.type ?? 'ANIME') === 'ANIME' &&
+          (String(e.relationType).toUpperCase() === 'PREQUEL' ||
+            String(e.relationType).toUpperCase() === 'PARENT')
+      )
+      .sort((a, b) =>
+        String(a.relationType).toUpperCase() === 'PREQUEL' ? -1 : 1
+      );
+
+    for (const edge of ancestorEdges) {
+      const ancestorId = edge.node.id;
+      if (ancestorId == null) continue;
+
+      const row = lookupByAniList(ancestorId);
+      if (this.hasExternalIds(row)) {
+        return row;
+      }
+
+      // Ancestor itself has no external IDs (e.g. S3 -> S2 both missing) —
+      // keep walking up the chain toward S1.
+      const deeper = await this.resolveAncestorMappingWithIds(
+        ancestorId,
+        relationsCache,
+        depth + 1,
+        visited
+      );
+      if (deeper) return deeper;
+    }
+    return undefined;
+  }
+
   // ---- Map ----
   public async mapSourceDataToItems(
     sourceData: CollectionSourceData[],
@@ -1129,6 +1220,10 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
     // Get media type from config (this already returns 'movie' | 'tv')
     const mediaType = getCollectionMediaType(config);
 
+    // Per-run cache of AniList relation edges, shared across sequel-season
+    // resolution lookups so a franchise's relations are fetched at most once.
+    const relationsCache = new Map<number, AniListRelationEdge[]>();
+
     for (let i = 0; i < sourceData.length; i++) {
       const entry = sourceData[i];
       // TypeScript narrows this to AniListSourceData since we know this is anilist collection
@@ -1158,6 +1253,35 @@ export class AnilistCollectionSync extends BaseCollectionSync<'anilist'> {
             }
           } catch (e) {
             // ignore
+          }
+        }
+
+        // Sequel-season resolution: if this entry has no matchable external
+        // IDs (common for newly-airing sequels that only carry anidb/mal in
+        // the mapping data), borrow the TVDB/TMDB/IMDb IDs from the nearest
+        // ancestor season via the PREQUEL/PARENT chain. All seasons share a
+        // single Plex entry keyed by the season-1 TVDB/TMDB ID, so this lets
+        // the sequel match the already-in-library show.
+        if (!this.hasExternalIds(map)) {
+          const ancestor = await this.resolveAncestorMappingWithIds(
+            anilistId,
+            relationsCache
+          );
+          if (ancestor) {
+            map = {
+              ...(map ?? {}),
+              tvdb_id: ancestor.tvdb_id ?? map?.tvdb_id,
+              tmdb_show_id: ancestor.tmdb_show_id ?? map?.tmdb_show_id,
+              tmdb_movie_id: ancestor.tmdb_movie_id ?? map?.tmdb_movie_id,
+              imdb_id: ancestor.imdb_id ?? map?.imdb_id,
+            };
+            logger.debug('Resolved sequel season via prequel chain', {
+              label: 'AniList Collections',
+              anilistId,
+              title: displayTitle,
+              borrowedTvdb: ancestor.tvdb_id,
+              borrowedTmdbShow: ancestor.tmdb_show_id,
+            });
           }
         }
 
