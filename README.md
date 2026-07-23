@@ -38,10 +38,12 @@ Set Collection Type to **AniList**, Sub-Type to **Custom List**, and paste any o
 | `https://anilist.co/search/anime?sourceCountry=KR` | Filters by **source material** country, not production country — catches Korean manhwa adaptations (Tower of God, God of High School, Noblesse) that AniList lists as `JP`. Comma-separate for multiple, e.g. `sourceCountry=KR,CN`. Combines with other filters. |
 | `https://anilist.co/anime/4654/A-Certain-Magical-Index/` | The anime **plus all its related anime** (sequels, prequels, side stories, spin-offs, alternatives, compilations). Manga adaptations, source, and character cross-refs are dropped. Sorted chronologically by air date. |
 | `https://anilist.co/staff/96877/CLAMP` | Works by a **creator/author**. Defaults to the **"Original Creator"** role only (so you get CLAMP's actual works, not anime they only did character designs for). Override with `?roles=Original Creator,Original Story`. Add `&sort=START_DATE` for chronological order. |
-| `https://anilist.co/studio/**/Studio-*****` | Works by an **animation studio**. Defaults to the studio's **main** works only. Add `?includeSecondary=true` to include assisted works, `&sort=START_DATE` for chronological order. |
+| `https://anilist.co/studio/21/Studio-Ghibli` | Works by an **animation studio**. Defaults to the studio's **main** works only. Add `?includeSecondary=true` to include assisted works, `&sort=START_DATE` for chronological order. |
 | `https://anilist.co/user/{username}/animelist/{listname}` | A user's custom list. |
 
 Common query parameters supported on `/search/anime` URLs: `genres`, `tags`, `season`, `seasonYear`, `year`, `sort`, `format`, `status`, `source`, `country`/`countryOfOrigin`, `sourceCountry`, `licensedById`, `isLicensed`, `search`, `minimumTagRank`, year/episode/duration ranges.
+
+**Sequel-season matching:** AniList treats each season as a separate entry (e.g. "Clevatess II"), while Plex groups all seasons under one show. Newly-airing sequels often have incomplete mapping data (no TVDB/TMDB ID yet), which would normally prevent them matching your library. This fork resolves such entries by following the AniList prequel chain to an earlier season that does have IDs — so a season 2 currently airing still gets matched to the show already in your Plex library.
 
 ### Anime Ratings in Poster Overlays
 
@@ -58,7 +60,7 @@ Two new overlay variables and matching preset templates: **AniList Score** and *
 ```yaml
 services:
   agregarr:
-    image: frequencylost/agregarr:latest
+    image: ghcr.io/frequencylost/agregarr:latest
     container_name: agregarr
     volumes:
       - /path/to/config:/app/config # Change /path/to/config to your actual config path
